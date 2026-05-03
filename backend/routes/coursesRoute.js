@@ -1,8 +1,14 @@
 import { Router } from "express";
 import Course from "../models/course.js";
+import { authenticate, authorize } from "../middleware/auth.js";
+
 export const coursesRouter = Router();
 
+// All routes require authentication
+coursesRouter.use(authenticate);
 
+
+// GET — all roles can read
 coursesRouter.get("/", async (req, res) => {
   try {
     const courses = await Course.find();
@@ -28,7 +34,8 @@ coursesRouter.get("/:id", async (req, res) => {
 });
 
 
-coursesRouter.post("/", async (req, res) => {
+// Write operations — super_admin and admin only
+coursesRouter.post("/", authorize("super_admin", "admin"), async (req, res) => {
   try {
     const course = new Course(req.body);
     await course.save(); 
@@ -40,7 +47,7 @@ coursesRouter.post("/", async (req, res) => {
 });
 
 
-coursesRouter.put("/:id", async (req, res) => {
+coursesRouter.put("/:id", authorize("super_admin", "admin"), async (req, res) => {
   try {
     const course = await Course.findByIdAndUpdate(req.params.id, req.body, {
       new: true, 
@@ -57,7 +64,7 @@ coursesRouter.put("/:id", async (req, res) => {
 });
 
 
-coursesRouter.delete("/:id", async (req, res) => {
+coursesRouter.delete("/:id", authorize("super_admin", "admin"), async (req, res) => {
   try {
     const course = await Course.findByIdAndDelete(req.params.id);
     if (!course) {

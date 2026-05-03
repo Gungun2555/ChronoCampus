@@ -9,6 +9,7 @@ import { roomsRouter, } from "./routes/roomsRoute.js";
 import { timetablesRouter, } from "./routes/timetableRoute.js";
 import { aiRouter, } from "./routes/aiRoute.js";
 import { notificationsRouter, } from "./routes/notificationsRoute.js";
+import { authRouter } from "./routes/authRoute.js";
 
 dotenv.config({ quiet: true });
 
@@ -20,6 +21,7 @@ app.use(cors());
 
 dbConnect();
 
+app.use("/api/auth", authRouter);
 app.use("/api/courses", coursesRouter);
 app.use("/api/faculty", facultyRouter);
 app.use("/api/rooms", roomsRouter);

@@ -1,9 +1,12 @@
 import { Router } from "express";
 import Faculty from "../models/Faculty.js";
+import { authenticate, authorize } from "../middleware/auth.js";
 
 export const facultyRouter = Router();
 
+facultyRouter.use(authenticate);
 
+// GET — all roles
 facultyRouter.get("/", async (req, res) => {
   try {
     const faculty = await Faculty.find(); 
@@ -29,7 +32,8 @@ facultyRouter.get("/:id", async (req, res) => {
 });
 
 
-facultyRouter.post("/", async (req, res) => {
+// Write — super_admin and admin only
+facultyRouter.post("/", authorize("super_admin", "admin"), async (req, res) => {
   try {
     const facultyMember = new Faculty(req.body);
     await facultyMember.save(); 
@@ -41,7 +45,7 @@ facultyRouter.post("/", async (req, res) => {
 });
 
 
-facultyRouter.put("/:id", async (req, res) => {
+facultyRouter.put("/:id", authorize("super_admin", "admin"), async (req, res) => {
   try {
     const facultyMember = await Faculty.findByIdAndUpdate(req.params.id, req.body, {
       new: true, 
@@ -58,7 +62,7 @@ facultyRouter.put("/:id", async (req, res) => {
 });
 
 
-facultyRouter.delete("/:id", async (req, res) => {
+facultyRouter.delete("/:id", authorize("super_admin", "admin"), async (req, res) => {
   try {
     const facultyMember = await Faculty.findByIdAndDelete(req.params.id);
     if (!facultyMember) {

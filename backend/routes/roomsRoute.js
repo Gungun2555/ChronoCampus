@@ -1,8 +1,10 @@
 import { Router } from "express";
 import Room from "../models/Room.js";
+import { authenticate, authorize } from "../middleware/auth.js";
 
 export const roomsRouter = Router();
 
+roomsRouter.use(authenticate);
 
 roomsRouter.get("/", async (req, res) => {
   try {
@@ -29,7 +31,8 @@ roomsRouter.get("/:id", async (req, res) => {
 });
 
 
-roomsRouter.post("/", async (req, res) => {
+// Write — super_admin only (rooms are shared infrastructure)
+roomsRouter.post("/", authorize("super_admin"), async (req, res) => {
   try {
     const room = new Room(req.body);
     await room.save(); 
@@ -41,7 +44,7 @@ roomsRouter.post("/", async (req, res) => {
 });
 
 
-roomsRouter.put("/:id", async (req, res) => {
+roomsRouter.put("/:id", authorize("super_admin"), async (req, res) => {
   try {
     const room = await Room.findByIdAndUpdate(req.params.id, req.body, {
       new: true, 
@@ -58,7 +61,7 @@ roomsRouter.put("/:id", async (req, res) => {
 });
 
 
-roomsRouter.delete("/:id", async (req, res) => {
+roomsRouter.delete("/:id", authorize("super_admin"), async (req, res) => {
   try {
     const room = await Room.findByIdAndDelete(req.params.id);
     if (!room) {

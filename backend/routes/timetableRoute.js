@@ -1,13 +1,21 @@
 import { Router } from "express";
 import Timetable from "../models/Timetable.js";
 import { generateTimetableWithAI} from "../utils/timetableGenerator.js";
+import { authenticate, authorize } from "../middleware/auth.js";
 
 export const timetablesRouter = Router();
 
-// Get all timetables
+timetablesRouter.use(authenticate);
+
+// Get all timetables — all roles
+// Supports optional ?status query parameter to filter by status
 timetablesRouter.get("/", async (req, res) => {
   try {
-    const timetables = await Timetable.find();
+    const filter = {};
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+    const timetables = await Timetable.find(filter);
     res.json(timetables);
   } catch (error) {
     console.error("Error fetching timetables:", error);
@@ -27,8 +35,8 @@ timetablesRouter.get("/:id", async (req, res) => {
   }
 });
 
-// Create new timetable
-timetablesRouter.post("/", async (req, res) => {
+// Create new timetable — super_admin and admin
+timetablesRouter.post("/", authorize("super_admin", "admin"), async (req, res) => {
   try {
     const timetable = new Timetable(req.body);
     await timetable.save();
@@ -39,8 +47,8 @@ timetablesRouter.post("/", async (req, res) => {
   }
 });
 
-// Update timetable
-timetablesRouter.put("/:id", async (req, res) => {
+// Update timetable — super_admin and admin
+timetablesRouter.put("/:id", authorize("super_admin", "admin"), async (req, res) => {
   try {
     const timetable = await Timetable.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!timetable) return res.status(404).json({ error: "Timetable not found" });
@@ -51,8 +59,8 @@ timetablesRouter.put("/:id", async (req, res) => {
   }
 });
 
-// Delete timetable
-timetablesRouter.delete("/:id", async (req, res) => {
+// Delete timetable — super_admin only
+timetablesRouter.delete("/:id", authorize("super_admin"), async (req, res) => {
   try {
     const timetable = await Timetable.findByIdAndDelete(req.params.id);
     if (!timetable) return res.status(404).json({ error: "Timetable not found" });
@@ -63,8 +71,8 @@ timetablesRouter.delete("/:id", async (req, res) => {
   }
 });
 
-// Generate timetable using AI
-timetablesRouter.post("/generate", async (req, res) => {
+// Generate timetable using AI — super_admin and admin
+timetablesRouter.post("/generate", authorize("super_admin", "admin"), async (req, res) => {
   try {
     const createdTimetable = await generateTimetableWithAI(req.body);
     res.json(createdTimetable);
