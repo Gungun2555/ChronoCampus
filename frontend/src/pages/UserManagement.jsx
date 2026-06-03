@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, UserCog, AlertCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-const DEPARTMENTS = ["AIDS", "AI", "MLIT", "Mechanical", "Textile", "Cybersecurity", "CSE Core"];
+const DEPARTMENTS = ["AIDS", "AIML", "IT", "Mechanical", "Textile", "Cybersecurity", "CSE Core", "CSE AI & DS"];
 const ROLES = ["super_admin", "admin", "teacher", "student"];
 
 const roleBadge = {

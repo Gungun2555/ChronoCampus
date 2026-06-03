@@ -4,10 +4,123 @@ import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Building2, LogOut, Loader } from "lucide-react";
+import { Calendar, Building2, LogOut, Loader, Bell, AlertTriangle, CheckCircle, Info, Check, Clock, BookOpen, GraduationCap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import boyImage from "@/assets/images/image.png";
+import logo from "@/assets/images/logo.png";
 
 const API = "http://localhost:5000/api";
+
+const ChartWithTooltip = ({ summary }) => {
+  const [hoveredCourse, setHoveredCourse] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const containerRef = useState(null)[1];
+
+  const courses = Object.entries(summary.courseCounts);
+  const colors = [
+    "#0ea5e9", "#06b6d4", "#10b981", "#3b82f6", "#8b5cf6",
+    "#ec4899", "#f59e0b", "#ef4444"
+  ];
+
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltipPos({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
+
+  return (
+    <div 
+      className="flex items-center justify-center relative"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => setHoveredCourse(null)}
+    >
+      <svg width="380" height="280" viewBox="0 0 280 280" className="drop-shadow-xl">
+        {(() => {
+          let currentAngle = -90;
+          const cx = 140, cy = 140, r = 90, innerR = 60;
+
+          return courses.map(([course, count], idx) => {
+            const percentage = count / summary.totalLectures;
+            const angle = percentage * 360;
+            const startAngle = currentAngle;
+            const endAngle = currentAngle + angle;
+
+            const startRad = (startAngle * Math.PI) / 180;
+            const endRad = (endAngle * Math.PI) / 180;
+
+            const x1 = cx + r * Math.cos(startRad);
+            const y1 = cy + r * Math.sin(startRad);
+            const x2 = cx + r * Math.cos(endRad);
+            const y2 = cy + r * Math.sin(endRad);
+
+            const x3 = cx + innerR * Math.cos(endRad);
+            const y3 = cy + innerR * Math.sin(endRad);
+            const x4 = cx + innerR * Math.cos(startRad);
+            const y4 = cy + innerR * Math.sin(startRad);
+
+            const largeArc = angle > 180 ? 1 : 0;
+            const pathData = [
+              `M ${x1} ${y1}`,
+              `A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
+              `L ${x3} ${y3}`,
+              `A ${innerR} ${innerR} 0 ${largeArc} 0 ${x4} ${y4}`,
+              "Z"
+            ].join(" ");
+
+            currentAngle = endAngle;
+
+            return (
+              <g 
+                key={idx} 
+                className="cursor-pointer transition-all"
+                onMouseEnter={() => setHoveredCourse({ course, count, color: colors[idx % colors.length], percentage: Math.round(percentage * 100) })}
+                onMouseLeave={() => setHoveredCourse(null)}
+              >
+                <path
+                  d={pathData}
+                  fill={colors[idx % colors.length]}
+                  stroke="white"
+                  strokeWidth={hoveredCourse?.course === course ? "3" : "2"}
+                  className="transition-all"
+                  opacity={hoveredCourse && hoveredCourse.course !== course ? "0.5" : "1"}
+                />
+              </g>
+            );
+          });
+        })()}
+      </svg>
+
+      {/* Custom Tooltip - Positioned relative to container */}
+      {hoveredCourse && (
+        <div 
+          className="absolute bg-white dark:bg-slate-800 rounded-lg shadow-2xl p-4 z-50 pointer-events-none whitespace-nowrap"
+          style={{
+            left: `${tooltipPos.x + 30}px`,
+            top: `${tooltipPos.y - 50}px`,
+            border: `2px solid ${hoveredCourse.color}`
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-4 h-4 rounded-full flex-shrink-0"
+              style={{ backgroundColor: hoveredCourse.color }}
+            />
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                {hoveredCourse.course}
+              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                {hoveredCourse.count} lectures • {hoveredCourse.percentage}%
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function StudentDashboard() {
   const { user, logout } = useAuth();
@@ -19,6 +132,8 @@ export default function StudentDashboard() {
   const [courseMap, setCourseMap] = useState({});
   const [facultyMap, setFacultyMap] = useState({});
   const [roomMap, setRoomMap] = useState({});
+  const [notifications, setNotifications] = useState([]);
+  const [notifLoading, setNotifLoading] = useState(true);
 
   // Fetch published timetables, courses, faculty, and rooms on mount
   useEffect(() => {
@@ -69,6 +184,18 @@ export default function StudentDashboard() {
       }
     };
     fetchData();
+  }, []);
+
+  // Fetch notifications for student
+  useEffect(() => {
+    axios.get(`${API}/notifications`)
+      .then((res) => {
+        const sorted = (Array.isArray(res.data) ? res.data : [])
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        setNotifications(sorted);
+      })
+      .catch((err) => console.error("Error fetching notifications:", err))
+      .finally(() => setNotifLoading(false));
   }, []);
 
   // Generate LLM summary for a timetable
@@ -129,20 +256,64 @@ export default function StudentDashboard() {
     navigate("/login");
   };
 
+  const handleMarkAsRead = async (id) => {
+    try {
+      await axios.put(`${API}/notifications/${id}/read`);
+      setNotifications((prev) =>
+        prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
+      );
+    } catch (err) {
+      console.error("Error marking as read:", err);
+    }
+  };
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const getNotifIcon = (type) => {
+    switch (type) {
+      case "error":   return <AlertTriangle className="h-4 w-4 text-red-500" />;
+      case "warning": return <AlertTriangle className="h-4 w-4 text-amber-500" />;
+      case "success": return <CheckCircle className="h-4 w-4 text-emerald-500" />;
+      default:        return <Info className="h-4 w-4 text-blue-500" />;
+    }
+  };
+
+  const getNotifBorder = (type, isRead) => {
+    if (isRead) return "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50";
+    const map = {
+      error:   "border-l-4 border-l-red-500 bg-red-50 dark:bg-red-900/20 border-red-200",
+      warning: "border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-900/20 border-amber-200",
+      success: "border-l-4 border-l-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200",
+      info:    "border-l-4 border-l-blue-500 bg-blue-50 dark:bg-blue-900/20 border-blue-200",
+    };
+    return map[type] || map.info;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 dark:from-slate-900 dark:to-slate-800">
       {/* Header */}
       <header className="sticky top-0 z-40 backdrop-blur-lg bg-white/70 dark:bg-slate-900/70 border-b border-white/20 shadow-sm">
         <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">ChronoCampus</h1>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Student Portal</p>
+          <div className="flex items-center gap-3">
+            <img src={logo} alt="ChronoCampus Logo" className="h-10 w-auto" />
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">ChronoCampus</h1>
+              <p className="text-sm text-slate-600 dark:text-slate-400">Student Portal</p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
               <p className="text-sm font-medium text-slate-900 dark:text-white">{user?.name || "Student"}</p>
               <p className="text-xs text-slate-600 dark:text-slate-400">{user?.department || "Department"}</p>
             </div>
+            {unreadCount > 0 && (
+              <div className="relative">
+                <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              </div>
+            )}
             <Button
               onClick={handleLogout}
               variant="outline"
@@ -158,29 +329,31 @@ export default function StudentDashboard() {
       {/* Main Content */}
       <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section - Rectangular Card */}
-<div className="mb-10 relative overflow-hidden rounded-3xl p-10 bg-gradient-to-r from-green-600 via-emerald-600 to-teal-700 shadow-2xl">          {/* Decorative elements */}
+<div className="mb-10 relative overflow-hidden rounded-3xl p-5 bg-gradient-to-r from-green-500 via-emerald-600 to-teal-800 shadow-2xl">          {/* Decorative elements */}
 <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,_white,_transparent)]" />          <div className="absolute bottom-0 right-20 w-24 h-24 bg-cyan-300 rounded-full opacity-20 blur-xl" />
           <div className="absolute top-12 right-1/4 w-3 h-3 bg-cyan-300 rounded-full" />
           <div className="absolute bottom-8 right-1/3 w-2 h-2 bg-lime-300 rounded-full" />
           
           <div className="relative z-10 flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-sm text-green-100 mb-2">
+              <p className="text-lg text-green-100 mb-2">
                 {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
               </p>
-              <h2 className="text-4xl font-bold mb-2">
+              <h2 className="text-5xl font-bold mb-2 text-white">
                 Welcome back, {user?.name || "Student"}!
               </h2>
-              <p className="text-green-100 text-lg">
+              <p className="text-green-100 text-1.5xl">
                 Always stay updated in your student portal
               </p>
             </div>
             
-            {/* Illustration placeholder with emojis */}
-            <div className="hidden md:flex items-center gap-4 ml-8">
-              <div className="text-6xl">🎓</div>
-              <div className="text-5xl">📚</div>
-              <div className="text-5xl">🚀</div>
+            {/* Illustration with boy image */}
+            <div className="hidden md:flex items-center ml-8">
+              <img 
+                src={boyImage} 
+                alt="Student illustration" 
+                className="h-64 w-auto object-contain drop-shadow-lg"
+              />
             </div>
           </div>
         </div>
@@ -235,48 +408,85 @@ export default function StudentDashboard() {
                     </Badge>
                   </div>
 
-                  {/* Schedule Table - MOVED UP */}
+                  {/* Schedule Table - Card-based Weekly View */}
                   {timetable.schedule && timetable.schedule.length > 0 ? (
-                    <div className="mb-6 overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-green-200 dark:border-slate-600 bg-green-50 dark:bg-slate-700/50">
-                            <th className="text-left py-3 px-4 font-semibold text-slate-900 dark:text-white">
-                              Day
-                            </th>
-                            <th className="text-left py-3 px-4 font-semibold text-slate-900 dark:text-white">
-                              Start Time
-                            </th>
-                            <th className="text-left py-3 px-4 font-semibold text-slate-900 dark:text-white">
-                              End Time
-                            </th>
-                            <th className="text-left py-3 px-4 font-semibold text-slate-900 dark:text-white">
-                              Course
-                            </th>
-                            <th className="text-left py-3 px-4 font-semibold text-slate-900 dark:text-white">
-                              Faculty
-                            </th>
-                            <th className="text-left py-3 px-4 font-semibold text-slate-900 dark:text-white">
-                              Room
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {timetable.schedule.map((entry, idx) => (
-                            <tr
-                              key={idx}
-                              className="border-b border-slate-200 dark:border-slate-700 hover:bg-green-50 dark:hover:bg-slate-700/50 transition-colors"
-                            >
-                              <td className="py-3 px-4 text-slate-700 dark:text-slate-300">{entry.day}</td>
-                              <td className="py-3 px-4 text-slate-700 dark:text-slate-300">{entry.startTime}</td>
-                              <td className="py-3 px-4 text-slate-700 dark:text-slate-300">{entry.endTime}</td>
-                              <td className="py-3 px-4 text-slate-700 dark:text-slate-300">{courseMap[entry.courseId] || entry.courseId}</td>
-                              <td className="py-3 px-4 text-slate-700 dark:text-slate-300">{facultyMap[entry.facultyId] || entry.facultyId}</td>
-                              <td className="py-3 px-4 text-slate-700 dark:text-slate-300">{roomMap[entry.roomId] || entry.roomId}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="mb-6">
+                      {/* Days Header */}
+                      <div className="flex gap-3 mb-6 overflow-x-auto pb-2">
+                        <div className="w-24 flex-shrink-0 px-4 py-2 rounded-full border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium text-center">
+                          Time
+                        </div>
+                        {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day) => (
+                          <div
+                            key={day}
+                            className="w-40 flex-shrink-0 px-4 py-2 rounded-full border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium text-center"
+                          >
+                            {day}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Get unique time slots */}
+                      {(() => {
+                        const timeSlots = new Set();
+                        timetable.schedule.forEach((entry) => {
+                          timeSlots.add(entry.startTime);
+                        });
+                        const sortedTimes = Array.from(timeSlots).sort();
+
+                        return (
+                          <div className="space-y-4">
+                            {sortedTimes.map((time) => (
+                              <div key={time} className="flex gap-3">
+                                {/* Time slot */}
+                                <div className="w-24 flex-shrink-0 pt-2">
+                                  <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                                    <Clock className="w-4 h-4" />
+                                    <span className="font-medium">{time}</span>
+                                  </div>
+                                </div>
+
+                                {/* Days columns */}
+                                <div className="flex gap-3 flex-1 overflow-x-auto pb-2">
+                                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day) => {
+                                    const dayClasses = timetable.schedule.filter(
+                                      (entry) => entry.day === day && entry.startTime === time
+                                    );
+
+                                    return (
+                                      <div key={`${day}-${time}`} className="w-40 flex-shrink-0">
+                                        {dayClasses.length > 0 ? (
+                                          dayClasses.map((entry, idx) => (
+                                            <div
+                                              key={idx}
+                                              className="p-3 rounded-lg border-l-4 border-l-green-500 bg-green-50 dark:bg-green-900/20 dark:border-l-green-400"
+                                            >
+                                              <p className="font-semibold text-sm text-slate-900 dark:text-white mb-1">
+                                                {courseMap[entry.courseId] || entry.courseId}
+                                              </p>
+                                              <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
+                                                🧑‍🏫 {facultyMap[entry.facultyId] || entry.facultyId}
+                                              </p>
+                                              <p className="text-xs text-slate-600 dark:text-slate-400">
+                                                📍 {roomMap[entry.roomId] || entry.roomId}
+                                              </p>
+                                              <p className="text-xs text-slate-500 dark:text-slate-500 mt-2">
+                                                {entry.startTime} - {entry.endTime}
+                                              </p>
+                                            </div>
+                                          ))
+                                        ) : (
+                                          <div className="h-24"></div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <p className="text-slate-600 dark:text-slate-400 text-center py-8 mb-6">
@@ -300,37 +510,43 @@ export default function StudentDashboard() {
                         {/* KPI Cards - Enhanced */}
                         <div className="flex flex-col gap-4">
                           {/* Total Lectures */}
-                          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-900/50 p-6 rounded-xl border border-blue-200 dark:border-blue-700/50 shadow-md hover:shadow-lg transition-shadow">
-                            <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs font-semibold text-blue-600 dark:text-blue-300 uppercase tracking-wide">Total Lectures</p>
-                              <div className="text-2xl">📚</div>
+                          <div className="flex items-center gap-4 p-6 rounded-lg border-l-4 border-l-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex-shrink-0">
+                              <BookOpen className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                             </div>
-                            <div className="text-4xl font-bold text-blue-600 dark:text-blue-400">{summary.totalLectures}</div>
-                            <p className="text-xs text-blue-600/70 dark:text-blue-300/70 mt-2">This week</p>
+                            <div className="flex-1">
+                              <p className="text-xs font-semibold text-blue-600 dark:text-blue-300 uppercase tracking-wide">Total Lectures</p>
+                              <div className="text-3xl font-bold text-blue-600 dark:text-blue-400 mt-1">{summary.totalLectures}</div>
+                              <p className="text-xs text-blue-600/70 dark:text-blue-300/70 mt-1">This week</p>
+                            </div>
                           </div>
 
                           {/* Courses Count */}
-                          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-900/50 p-6 rounded-xl border border-green-200 dark:border-green-700/50 shadow-md hover:shadow-lg transition-shadow">
-                            <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs font-semibold text-green-600 dark:text-green-300 uppercase tracking-wide">Unique Courses</p>
-                              <div className="text-2xl">🎓</div>
+                          <div className="flex items-center gap-4 p-6 rounded-lg border-l-4 border-l-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex-shrink-0">
+                              <GraduationCap className="w-8 h-8 text-purple-600 dark:text-purple-400" />
                             </div>
-                            <div className="text-4xl font-bold text-green-600 dark:text-green-400">
-                              {Object.keys(summary.courseCounts).length}
+                            <div className="flex-1">
+                              <p className="text-xs font-semibold text-purple-600 dark:text-purple-300 uppercase tracking-wide">Unique Courses</p>
+                              <div className="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-1">
+                                {Object.keys(summary.courseCounts).length}
+                              </div>
+                              <p className="text-xs text-purple-600/70 dark:text-purple-300/70 mt-1">Enrolled</p>
                             </div>
-                            <p className="text-xs text-green-600/70 dark:text-green-300/70 mt-2">Enrolled</p>
                           </div>
 
                           {/* Days Count */}
-                          <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-900/50 p-6 rounded-xl border border-amber-200 dark:border-amber-700/50 shadow-md hover:shadow-lg transition-shadow">
-                            <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-4 p-6 rounded-lg border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-900/20 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex-shrink-0">
+                              <Calendar className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <div className="flex-1">
                               <p className="text-xs font-semibold text-amber-600 dark:text-amber-300 uppercase tracking-wide">Days with Classes</p>
-                              <div className="text-2xl">📅</div>
+                              <div className="text-3xl font-bold text-amber-600 dark:text-amber-400 mt-1">
+                                {Object.keys(summary.dayCount).length}
+                              </div>
+                              <p className="text-xs text-amber-600/70 dark:text-amber-300/70 mt-1">Per week</p>
                             </div>
-                            <div className="text-4xl font-bold text-amber-600 dark:text-amber-400">
-                              {Object.keys(summary.dayCount).length}
-                            </div>
-                            <p className="text-xs text-amber-600/70 dark:text-amber-300/70 mt-2">Per week</p>
                           </div>
                         </div>
 
@@ -341,89 +557,7 @@ export default function StudentDashboard() {
                             <a href="#" className="text-sm text-green-600 hover:text-green-700 font-medium">View More →</a>
                           </div>
                           
-                          <div className="flex items-center justify-center">
-                            <svg width="280" height="280" viewBox="0 0 280 280" className="drop-shadow-xl">
-                              {(() => {
-                                const courses = Object.entries(summary.courseCounts);
-                                const colors = [
-                                  "#0ea5e9", "#06b6d4", "#10b981", "#3b82f6", "#8b5cf6",
-                                  "#ec4899", "#f59e0b", "#ef4444"
-                                ];
-                                let currentAngle = -90;
-                                const cx = 140, cy = 140, r = 90, innerR = 60;
-
-                                return courses.map(([course, count], idx) => {
-                                  const percentage = count / summary.totalLectures;
-                                  const angle = percentage * 360;
-                                  const startAngle = currentAngle;
-                                  const endAngle = currentAngle + angle;
-
-                                  const startRad = (startAngle * Math.PI) / 180;
-                                  const endRad = (endAngle * Math.PI) / 180;
-
-                                  const x1 = cx + r * Math.cos(startRad);
-                                  const y1 = cy + r * Math.sin(startRad);
-                                  const x2 = cx + r * Math.cos(endRad);
-                                  const y2 = cy + r * Math.sin(endRad);
-
-                                  const x3 = cx + innerR * Math.cos(endRad);
-                                  const y3 = cy + innerR * Math.sin(endRad);
-                                  const x4 = cx + innerR * Math.cos(startRad);
-                                  const y4 = cy + innerR * Math.sin(startRad);
-
-                                  const largeArc = angle > 180 ? 1 : 0;
-                                  const pathData = [
-                                    `M ${x1} ${y1}`,
-                                    `A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
-                                    `L ${x3} ${y3}`,
-                                    `A ${innerR} ${innerR} 0 ${largeArc} 0 ${x4} ${y4}`,
-                                    "Z"
-                                  ].join(" ");
-
-                                  currentAngle = endAngle;
-
-                                  return (
-                                    <g key={idx}>
-                                      <path
-                                        d={pathData}
-                                        fill={colors[idx % colors.length]}
-                                        stroke="white"
-                                        strokeWidth="2"
-                                        className="hover:opacity-80 transition-opacity cursor-pointer"
-                                      />
-                                    </g>
-                                  );
-                                });
-                              })()}
-                            </svg>
-                          </div>
-
-                          {/* Legend */}
-                          <div className="mt-8 grid grid-cols-2 gap-4">
-                            {Object.entries(summary.courseCounts).map(([course, count], idx) => {
-                              const colors = [
-                                "#0ea5e9", "#06b6d4", "#10b981", "#3b82f6", "#8b5cf6",
-                                "#ec4899", "#f59e0b", "#ef4444"
-                              ];
-                              const percentage = Math.round((count / summary.totalLectures) * 100);
-                              return (
-                                <div key={course} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors">
-                                  <div
-                                    className="w-4 h-4 rounded-full flex-shrink-0"
-                                    style={{ backgroundColor: colors[idx % colors.length] }}
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                                      {course}
-                                    </p>
-                                    <p className="text-xs text-slate-600 dark:text-slate-400">
-                                      {count} lectures • {percentage}%
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                          <ChartWithTooltip summary={summary} courseMap={courseMap} />
                         </div>
                       </div>
                     </div>
@@ -433,6 +567,68 @@ export default function StudentDashboard() {
             })}
           </div>
         )}
+
+        {/* Notifications Section */}
+        <div className="mt-10">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+              <Bell className="h-4 w-4 text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Notifications</h2>
+              <p className="text-xs text-slate-500">{notifications.length} total · {unreadCount} unread</p>
+            </div>
+          </div>
+
+          {notifLoading ? (
+            <Card className="p-8 text-center bg-white dark:bg-slate-800 border-green-200 dark:border-slate-700">
+              <Loader className="w-5 h-5 animate-spin text-green-500 mx-auto" />
+            </Card>
+          ) : notifications.length === 0 ? (
+            <Card className="p-10 text-center bg-white dark:bg-slate-800 border-green-200 dark:border-slate-700">
+              <Bell className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">No notifications yet.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {notifications.map((n) => (
+                <div
+                  key={n._id}
+                  className={`p-4 rounded-lg border flex items-start justify-between gap-4 transition-all ${getNotifBorder(n.type, n.isRead)}`}
+                >
+                  <div className="flex items-start gap-3 flex-1">
+                    <div className="mt-0.5 shrink-0">{getNotifIcon(n.type)}</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className={`font-semibold text-sm ${n.isRead ? "text-slate-500" : "text-slate-800 dark:text-slate-100"}`}>
+                          {n.title}
+                        </p>
+                        <Badge variant="outline" className="text-xs capitalize px-1.5 py-0">
+                          {n.priority}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-slate-600 dark:text-slate-300">{n.message}</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {new Date(n.createdAt).toLocaleString()}
+                        {n.createdBy?.name && <span className="ml-2">· by {n.createdBy.name}</span>}
+                      </p>
+                    </div>
+                  </div>
+                  {!n.isRead && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 shrink-0"
+                      onClick={() => handleMarkAsRead(n._id)}
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

@@ -39,18 +39,41 @@ export default function NotificationsPage() {
   const [showForm, setShowForm] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [notificationToDelete, setNotificationToDelete] = useState(null);
-  const { canWrite } = useAuth();
+  const { user } = useAuth();
   const { roleTheme } = useTheme();
+
+  // targetRole options per sender role
+  const targetOptions = (() => {
+    switch (user?.role) {
+      case "super_admin": return [
+        { value: "everyone", label: "Everyone" },
+        { value: "admin",    label: "Admins only" },
+        { value: "teacher",  label: "Teachers only" },
+        { value: "student",  label: "Students only" },
+      ];
+      case "admin": return [
+        { value: "teacher", label: "Teachers only" },
+        { value: "student", label: "Students only" },
+      ];
+      case "teacher": return [
+        { value: "student", label: "Students only" },
+      ];
+      default: return [];
+    }
+  })();
+
+  const canSend = targetOptions.length > 0;
 
   const [formData, setFormData] = useState({
     title: "",
     message: "",
     type: "info",
     priority: "low",
+    targetRole: targetOptions[0]?.value || "everyone",
   });
 
   const resetForm = () => {
-    setFormData({ title: "", message: "", type: "info", priority: "low" });
+    setFormData({ title: "", message: "", type: "info", priority: "low", targetRole: targetOptions[0]?.value || "everyone" });
   };
 
   const fetchNotifications = async () => {
@@ -86,6 +109,7 @@ export default function NotificationsPage() {
       fetchNotifications();
     } catch (error) {
       console.error("Error creating notification:", error);
+      alert(error.response?.data?.error || "Failed to send notification");
     } finally {
       setFormLoading(false);
     }
@@ -184,7 +208,7 @@ export default function NotificationsPage() {
               Manage system-wide alerts and messages.
             </p>
           </div>
-          {canWrite() && (
+          {canSend && (
           <Button
             onClick={() => setShowForm(!showForm)}
             className="text-white shadow-sm h-9 px-4 text-sm border-0"
@@ -208,7 +232,7 @@ export default function NotificationsPage() {
             </CardHeader>
             <CardContent className="pt-4">
               <form onSubmit={handleSubmitNotification} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-slate-700 dark:text-slate-300 font-medium">
                       Type
@@ -247,6 +271,26 @@ export default function NotificationsPage() {
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="medium">Medium</SelectItem>
                         <SelectItem value="high">High</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-slate-700 dark:text-slate-300 font-medium">
+                      Send To
+                    </Label>
+                    <Select
+                      value={formData.targetRole}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, targetRole: value })
+                      }
+                    >
+                      <SelectTrigger className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200">
+                        {targetOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -374,6 +418,12 @@ export default function NotificationsPage() {
                         </p>
                         <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
                           {new Date(n.createdAt).toLocaleString()}
+                          {n.createdBy?.name && (
+                            <span className="ml-2">· by <span className="font-medium">{n.createdBy.name}</span></span>
+                          )}
+                          {n.targetRole && (
+                            <span className="ml-2">· to <span className="font-medium capitalize">{n.targetRole}</span></span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -388,7 +438,7 @@ export default function NotificationsPage() {
                           <Check className="h-4 w-4" />
                         </Button>
                       )}
-                      {canWrite() && (
+                      {(user?.role === "super_admin" || n.createdBy?._id === user?._id) && (
                       <Button
                         size="sm"
                         variant="ghost"

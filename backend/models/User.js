@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
 const DEPARTMENTS = [
-  "AIDS", "AIML", "IT", "Mechanical", "Textile", "Cybersecurity", "CSE Core"
+  "AIDS", "AIML", "IT", "Mechanical", "Textile", "Cybersecurity", "CSE Core", "CSE AI & DS"
 ];
 
 const UserSchema = new mongoose.Schema(

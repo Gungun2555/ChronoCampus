@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { useAuth } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoginPage from "./pages/Login";
+import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import TeacherDashboard from "./pages/TeacherDashboard";
 import StudentDashboard from "./pages/StudentDashboard";
@@ -12,19 +13,12 @@ import TimetablePage from "./pages/Timetable";
 import NotificationsPage from "./pages/Notifications";
 import UserManagementPage from "./pages/UserManagement";
 
-// Redirect to role-specific home
-function RoleHome() {
+// Show landing page for guests; redirect authenticated users to their dashboard
+function Home() {
   const { user } = useAuth();
-  console.log("RoleHome - Current user role:", user?.role);
-  if (user?.role === "student") {
-    console.log("Redirecting student to /student");
-    return <Navigate to="/student" replace />;
-  }
-  if (user?.role === "teacher") {
-    console.log("Redirecting teacher to /teacher");
-    return <Navigate to="/teacher" replace />;
-  }
-  console.log("Rendering admin dashboard");
+  if (!user) return <LandingPage />;
+  if (user.role === "student") return <Navigate to="/student" replace />;
+  if (user.role === "teacher") return <Navigate to="/teacher" replace />;
   return <Dashboard />;
 }
 
@@ -43,8 +37,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
 
-      {/* Root — redirects based on role */}
-      <Route path="/" element={<ProtectedRoute><RoleHome /></ProtectedRoute>} />
+      {/* Root — landing page for guests, dashboard for authenticated */}
+      <Route path="/" element={<Home />} />
 
       {/* Student dashboard */}
       <Route path="/student" element={
